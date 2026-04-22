@@ -1,39 +1,50 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import pickle
-from train_model import deploy_model
+import torch
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 import os
+from train_model import deploy_model, MODEL_DIR
 
-if os.path.exists('model.pkl'):
-    print("MODEL FOUND!")
-else:
-    train_X = ["good product", "bad service", "excellent", "terrible"]
-    train_y = [1, 0, 1, 0]
-    deploy_model(train_X, train_y)
-
+# Si no existe el modelo entrenado, lo entrenamos primero
+if not os.path.exists(MODEL_DIR):
+    print("Modelo no encontrado. Iniciando entrenamiento...")
+    deploy_model()
 
 app = FastAPI()
 
-with open("model.pkl", "rb") as f:
-    model = pickle.load(f)
-
-with open("vectorizer.pkl", "rb") as f:
-    vectorizer = pickle.load(f)
+# Cargar modelo y tokenizador desde disco
+tokenizer = DistilBertTokenizer.from_pretrained(MODEL_DIR)
+model = DistilBertForSequenceClassification.from_pretrained(MODEL_DIR)
+model.eval()  # Modo inferencia (desactiva dropout, etc.)
 
 
 class InputData(BaseModel):
     text: str
 
-@app.post("/predict")
-def predict(data: InputData): ## Equivalente a su score.py
-    
-    X = vectorizer.transform([data.text])
 
-    # Predict
-    pred = model.predict(X)[0]
-    prob = model.predict_proba(X)[0][1]
+@app.post("/predict")
+def predict(data: InputData):  # Equivalente al score.py del ejemplo
+    # Tokenizar el texto de entrada
+    inputs = tokenizer(
+        data.text,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=128,
+    )
+
+    # Inferencia sin calcular gradientes (más rápido y sin memoria extra)
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    logits = outputs.logits
+    probs = torch.softmax(logits, dim=-1).squeeze().tolist()
+    pred_id = int(torch.argmax(logits, dim=-1).item())
+    pred_label = model.config.id2label[pred_id]
 
     return {
-        "prediction": int(pred),
-        "probability": float(prob)
+        "prediction": pred_label,
+        "probabilities": {
+            model.config.id2label[i]: round(p, 4) for i, p in enumerate(probs)
+        },
     }

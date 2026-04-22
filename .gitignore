@@ -1,0 +1,20 @@
+# Entorno virtual
+venv/
+
+# Modelo entrenado (demasiado grande para GitHub, >100MB)
+# Para obtenerlo: ejecutar deploy_model() o descargar de HuggingFace
+sentiment_model/
+
+# Artefactos de entrenamiento
+results/
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivos de pickle (modelo ejemplo del profe)
+*.pkl
+
+# Variables de entorno
+.env
