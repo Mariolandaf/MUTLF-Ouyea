@@ -1,0 +1,4 @@
+{
+  "linuxFxVersion": "DOCKER|acrmutlfouyea0427.azurecr.io/webappsimple:latest",
+  "acrUseManagedIdentityCreds": true
+}

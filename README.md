@@ -59,6 +59,89 @@ curl -X POST http://127.0.0.1:8000/predict \
      -d '{"text": "The company reported record profits this quarter"}'
 ```
 
+## Docker
+
+Antes de construir la imagen, verifica que exista `sentiment_model/` si no quieres que el contenedor entrene el modelo al arrancar.
+
+Construir y correr localmente el contenedor:
+
+```bash
+docker build --tag fastapi-demo .
+docker run --detach --publish 3100:3100 fastapi-demo
+```
+
+Probar el endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:3100/predict \
+     -H "Content-Type: application/json" \
+     -d '{"text": "The company reported record profits this quarter"}'
+```
+
+## Despliegue en Azure App Service
+
+Variables sugeridas:
+
+```bash
+RESOURCE_GROUP_NAME=rg-fastapi-demo
+LOCATION=eastus
+CONTAINER_REGISTRY_NAME=<nombre-unico-acr>
+WEB_APP_NAME=<nombre-unico-webapp>
+```
+
+Crear el grupo de recursos y Azure Container Registry:
+
+```bash
+az group create --name $RESOURCE_GROUP_NAME --location $LOCATION
+az acr create \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --name $CONTAINER_REGISTRY_NAME \
+  --sku Basic
+```
+
+Compilar la imagen en Azure Container Registry y crear el plan Linux:
+
+```bash
+az acr build \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --registry $CONTAINER_REGISTRY_NAME \
+  --image webappsimple:latest .
+
+az appservice plan create \
+  --name webplan \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --sku B1 \
+  --is-linux
+```
+
+Crear y configurar la Web App con el contenedor:
+
+```bash
+SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+
+az webapp create \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --plan webplan \
+  --name $WEB_APP_NAME \
+  --assign-identity [system] \
+  --role AcrPull \
+  --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME \
+  --acr-use-identity \
+  --acr-identity [system] \
+  --container-image-name $CONTAINER_REGISTRY_NAME.azurecr.io/webappsimple:latest
+
+az webapp config appsettings set \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --name $WEB_APP_NAME \
+  --settings WEBSITES_PORT=3100
+```
+
+Abrir la API:
+
+```bash
+az webapp browse --resource-group $RESOURCE_GROUP_NAME --name $WEB_APP_NAME
+```
+
 ## Nota sobre el modelo entrenado
 
 La carpeta `sentiment_model/` no está incluida en el repositorio (255MB). Al correr el servidor por primera vez se entrenará automáticamente (~22 horas en CPU, o menos con GPU).
